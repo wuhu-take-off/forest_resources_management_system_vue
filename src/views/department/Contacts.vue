@@ -1,8 +1,12 @@
 <template>
     <div class="contacts">
         <div class="department-header">
-            <h2>部门管理</h2>
-            <button class="add-btn" @click="showAddDialog">添加部门</button>
+            <h2>林地资源管理</h2>
+            <div class="header-right">
+                <el-button type="primary" size="small" @click="showAddDialog">
+                    <i class="el-icon-plus"></i> 添加部门
+                </el-button>
+            </div>
         </div>
 
         <!-- 部门树形展示 -->
@@ -12,39 +16,89 @@
                     <div class="department-info">
                         <el-button type="text" class="expand-btn" @click="toggleUserList(dept)">
                             <i :class="['el-icon-arrow-right', { 'expanded': dept.showUsers }]"></i>
-                            <span class="department-name">{{ dept.department_name }}</span>
+                            <div class="dept-title">
+                                <i class="el-icon-folder"></i>
+                                <span class="department-name">{{ dept.department_name }}</span>
+                            </div>
                         </el-button>
                     </div>
                 </div>
                 <!-- 用户列表 -->
                 <div v-show="dept.showUsers" class="user-list-container">
                     <div class="user-list">
-                        <div class="user-list-header">
+                        <div v-for="user in dept.users" :key="user.user_id" class="user-item" @contextmenu.prevent="showUserContextMenu($event, user)">
                             <div class="user-info">
-                                <span class="col-username">用户名</span>
-                                <span class="col-phone">手机号码</span>
-                                <span class="col-identity">用户身份</span>
-                            </div>
-                            <div class="user-actions-header">
-                                <span>操作</span>
-                            </div>
-                        </div>
-                        <div v-for="user in dept.users" :key="user.user_id" class="user-item">
-                            <div class="user-info">
-                                <span class="col-username">{{ user.username }}</span>
-                                <span class="col-phone">{{ user.phone || '未设置' }}</span>
-                                <span class="col-identity">{{ getIdentityName(user.identity_id) }}</span>
+                                <div class="user-avatar">
+                                    <i class="el-icon-user"></i>
+                                </div>
+                                <div class="user-details">
+                                    <span class="username">{{ user.username }}</span>
+                                    <span class="identity">{{ getIdentityName(user.identity_id) }}</span>
+                                </div>
+                                <div class="user-contact">
+                                    <span class="phone">{{ user.phone || '未设置' }}</span>
+                                </div>
                             </div>
                             <div class="user-actions">
-                                <button @click="showEditUserDialog(user)">编辑</button>
-                                <button @click="handleDeleteUser(user.user_id)">删除</button>
+                                <el-button type="text" size="mini" @click="showEditUserDialog(user)">
+                                    <i class="el-icon-edit"></i>
+                                </el-button>
+                                <el-button type="text" size="mini" @click="handleDeleteUser(user.user_id)">
+                                    <i class="el-icon-delete"></i>
+                                </el-button>
                             </div>
                         </div>
                     </div>
                 </div>
                 <!-- 递归渲染子部门 -->
                 <div class="children" v-if="dept.children && dept.children.length">
-                    <!-- 递归部分的代码 -->
+                    <div v-for="childDept in dept.children" :key="childDept.department_id" class="department-item">
+                        <div class="department-node" @contextmenu.prevent="showContextMenu($event, childDept)">
+                            <div class="department-info">
+                                <el-button type="text" class="expand-btn" @click="toggleUserList(childDept)">
+                                    <i :class="['el-icon-arrow-right', { 'expanded': childDept.showUsers }]"></i>
+                                    <div class="dept-title">
+                                        <i class="el-icon-folder"></i>
+                                        <span class="department-name">{{ childDept.department_name }}</span>
+                                    </div>
+                                </el-button>
+                            </div>
+                        </div>
+                        <!-- 子部门的用户列表 -->
+                        <div v-show="childDept.showUsers" class="user-list-container">
+                            <div class="user-list">
+                                <div v-for="user in childDept.users" :key="user.user_id" class="user-item" @contextmenu.prevent="showUserContextMenu($event, user)">
+                                    <div class="user-info">
+                                        <div class="user-avatar">
+                                            <i class="el-icon-user"></i>
+                                        </div>
+                                        <div class="user-details">
+                                            <span class="username">{{ user.username }}</span>
+                                            <span class="identity">{{ getIdentityName(user.identity_id) }}</span>
+                                        </div>
+                                        <div class="user-contact">
+                                            <span class="phone">{{ user.phone || '未设置' }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="user-actions">
+                                        <el-button type="text" size="mini" @click="showEditUserDialog(user)">
+                                            <i class="el-icon-edit"></i>
+                                        </el-button>
+                                        <el-button type="text" size="mini" @click="handleDeleteUser(user.user_id)">
+                                            <i class="el-icon-delete"></i>
+                                        </el-button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 递归渲染更深层级的子部门 -->
+                        <div class="children" v-if="childDept.children && childDept.children.length">
+                            <div v-for="grandChildDept in childDept.children" :key="grandChildDept.department_id">
+                                <!-- 递归组件 -->
+                                <department-item :dept="grandChildDept" />
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -66,13 +120,74 @@
         </div>
 
         <!-- 添加/编辑部门对话框 -->
-        <div class="dialog" v-if="showDepartmentDialog">
-            <!-- 部门对话框内容 -->
-        </div>
+        <el-dialog 
+            :title="isEdit ? '编辑部门' : '添加部门'" 
+            :visible.sync="showDepartmentDialog" 
+            width="500px">
+            <el-form :model="departmentForm" label-width="100px">
+                <el-form-item label="部门名称">
+                    <el-input 
+                        v-model="departmentForm.department_name" 
+                        placeholder="请��入部门名称">
+                    </el-input>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="showDepartmentDialog = false">取 消</el-button>
+                <el-button type="primary" @click="handleSubmitDepartment">确 定</el-button>
+            </span>
+        </el-dialog>
 
         <!-- 添加/编辑用户对话框 -->
-        <div class="dialog" v-if="showUserDialog">
-            <!-- 用户对话框内容 -->
+        <el-dialog 
+            :title="isEditUser ? '编辑用户' : '添加用户'" 
+            :visible.sync="showUserDialog" 
+            width="500px">
+            <el-form :model="userForm" label-width="100px">
+                <el-form-item label="用户名">
+                    <el-input 
+                        v-model="userForm.username" 
+                        placeholder="请输入用户名">
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="密码" v-if="!isEditUser || changePassword">
+                    <div class="password-input" v-if="isEditUser">
+                        <el-checkbox v-model="changePassword" @change="handlePasswordChange">修改密码</el-checkbox>
+                    </div>
+                    <el-input 
+                        v-model="userForm.password" 
+                        type="password"
+                        placeholder="请输入新密码">
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="手机号">
+                    <el-input 
+                        v-model="userForm.phone" 
+                        placeholder="请输入手机号">
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="用户身份">
+                    <el-select v-model="userForm.identity_id" placeholder="请选择用户身份">
+                        <el-option
+                            v-for="item in identityList"
+                            :key="item.identity_id"
+                            :label="item.identity_name"
+                            :value="item.identity_id">
+                        </el-option>
+                    </el-select>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="showUserDialog = false">取 消</el-button>
+                <el-button type="primary" @click="handleSubmitUser">确 定</el-button>
+            </span>
+        </el-dialog>
+
+        <!-- 用户右键菜单 -->
+        <div v-show="userContextMenuVisible" :style="userContextMenuStyle" class="context-menu">
+            <div class="context-menu-item" @click="startChat(selectedUser)">
+                <i class="el-icon-chat-line-round"></i> 发起私聊
+            </div>
         </div>
     </div>
 </template>
@@ -113,24 +228,36 @@ export default {
                 left: '0px'
             },
             selectedDepartment: null,
+            userContextMenuVisible: false,
+            userContextMenuStyle: {
+                top: '0px',
+                left: '0px'
+            },
+            selectedUser: null,
         }
     },
     created() {
         this.fetchDepartmentList()
         this.fetchIdentityList()
         // 添加点击其他地方关闭右键菜单的监听
-        document.addEventListener('click', this.hideContextMenu)
+        document.addEventListener('click', () => {
+            this.hideContextMenu()
+            this.hideUserContextMenu()
+        })
     },
     beforeDestroy() {
         // 移除监听器
-        document.removeEventListener('click', this.hideContextMenu)
+        document.removeEventListener('click', () => {
+            this.hideContextMenu()
+            this.hideUserContextMenu()
+        })
     },
     methods: {
         // 从原 Department.vue 复制所有部门管理相关方法
         async fetchDepartmentList() {
             try {
                 const response = await axios.post('/department/list')
-                if (response.data.code === config.successCode) {
+                if (response.data.code === 20000) {
                     this.departmentList = this.processDeparmentsData(response.data.data.department_list)
                 } else {
                     throw new Error(response.data.msg)
@@ -144,7 +271,8 @@ export default {
             return departments.map(dept => ({
                 ...dept,
                 showUsers: false,
-                users: []
+                users: [],
+                children: dept.children || []
             }))
         },
 
@@ -158,7 +286,7 @@ export default {
             this.showDepartmentDialog = true
         },
 
-        // 添加获取身份列表的方法
+        // 添加取身份列表的方法
         async fetchIdentityList() {
             try {
                 const response = await axios.post('/identity/list')
@@ -168,7 +296,7 @@ export default {
                     throw new Error(response.data.msg)
                 }
             } catch (error) {
-                this.$message.error('获取身份列表失败：' + error.message)
+                this.$message.error('获取身份列表失' + error.message)
             }
         },
 
@@ -213,11 +341,460 @@ export default {
         // 添加隐藏右键菜单的方法
         hideContextMenu() {
             this.contextMenuVisible = false
+        },
+
+        // 处理部门表单提交
+        async handleSubmitDepartment() {
+            try {
+                const url = this.isEdit ? '/department/modify' : '/department/create'
+                const response = await axios.post(url, this.departmentForm)
+                
+                if (response.data.code === 20000) {
+                    this.$message.success(this.isEdit ? '部门更新成功' : '部门添加成功')
+                    this.showDepartmentDialog = false
+                    await this.fetchDepartmentList() // 刷新部门列表
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                this.$message.error(this.isEdit ? '更新部门失败：' : '添加部门失败：' + error.message)
+            }
+        },
+
+        // 显示编辑对话框
+        showEditDialog(department) {
+            this.isEdit = true
+            this.departmentForm = {
+                department_id: department.department_id,
+                department_name: department.department_name,
+                department_parent_id: department.department_parent_id
+            }
+            this.showDepartmentDialog = true
+            this.hideContextMenu()
+        },
+
+        // 处理删除部门
+        async handleDelete(departmentId) {
+            try {
+                await this.$confirm('确认删除该部门吗？', '提', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                })
+
+                const response = await axios.post('/department/del', {
+                    department_id: departmentId
+                })
+
+                if (response.data.code === 20000) {
+                    this.$message.success('删除部门成功')
+                    await this.fetchDepartmentList() // 刷新部门列表
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                if (error !== 'cancel') {
+                    this.$message.error('删除部门失败：' + error.message)
+                }
+            }
+            this.hideContextMenu()
+        },
+
+        // 显示添加用户对话框
+        showAddUserDialog(departmentId) {
+            this.isEditUser = false
+            this.userForm = {
+                username: '',
+                password: '',
+                phone: '',
+                department_id: departmentId,
+                user_id: null,
+                identity_id: null
+            }
+            this.showUserDialog = true
+            this.hideContextMenu()
+        },
+
+        // 显示编辑用户对话框
+        showEditUserDialog(user) {
+            this.isEditUser = true
+            this.changePassword = false // 重置修改密码选项
+            this.userForm = {
+                ...user,
+                password: '' // 清空密码字段
+            }
+            this.showUserDialog = true
+        },
+
+        // 处理删除用户
+        async handleDeleteUser(userId) {
+            try {
+                await this.$confirm('确认删除该用户吗？', '提示', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning'
+                })
+
+                const response = await axios.post('/user/delete', {
+                    user_id: userId
+                })
+
+                if (response.data.code === config.successCode) {
+                    this.$message.success('删除用户成功')
+                    // 刷新当前部门的用户列表
+                    const department = this.findDepartmentByUserId(userId)
+                    if (department) {
+                        await this.toggleUserList(department)
+                    }
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                if (error !== 'cancel') {
+                    this.$message.error('删除用户失败：' + error.message)
+                }
+            }
+        },
+
+        // 查找用户所在的部门
+        findDepartmentByUserId(userId) {
+            for (const dept of this.departmentList) {
+                if (dept.users && dept.users.some(user => user.user_id === userId)) {
+                    return dept
+                }
+            }
+            return null
+        },
+
+        // 处理用户表单提交
+        async handleSubmitUser() {
+            try {
+                const url = this.isEditUser ? '/user/modify' : '/user/create'
+                
+                // 创建要提交的数据对象
+                const submitData = {
+                    username: this.userForm.username,
+                    phone: this.userForm.phone,
+                    identity_id: this.userForm.identity_id
+                }
+                
+                // 如果是编辑模式，添加user_id
+                if (this.isEditUser) {
+                    submitData.user_id = this.userForm.user_id
+                }
+                
+                // 只有在以下情况添加password字段：
+                // 1. 新建用户
+                // 2. 编辑用户且选择修改密码且密码为空
+                if (!this.isEditUser || (this.isEditUser && this.changePassword && this.userForm.password)) {
+                    submitData.password = this.userForm.password
+                }
+
+                const response = await axios.post(url, submitData)
+                
+                if (response.data.code === 20000) {
+                    this.$message.success(this.isEditUser ? '用户更新成功' : '用户添加成功')
+                    this.showUserDialog = false
+                    this.changePassword = false // 重置修改密码选项
+                    
+                    // 刷新当前部门的用户列表
+                    const department = this.findDepartmentById(this.userForm.department_id)
+                    if (department) {
+                        await this.toggleUserList(department)
+                    }
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                this.$message.error(this.isEditUser ? '更新用户失败：' : '添加用户失败：' + error.message)
+            }
+        },
+
+        // 根据部门ID查找部门
+        findDepartmentById(departmentId) {
+            const findDept = (deptList) => {
+                for (const dept of deptList) {
+                    if (dept.department_id === departmentId) {
+                        return dept
+                    }
+                    if (dept.children && dept.children.length) {
+                        const found = findDept(dept.children)
+                        if (found) return found
+                    }
+                }
+                return null
+            }
+            return findDept(this.departmentList)
+        },
+
+        // 处理密码修改选项变化
+        handlePasswordChange(val) {
+            if (!val) {
+                this.userForm.password = '' // 取消修改密码时清空密码字段
+            }
+        },
+
+        // 显示用户右键菜单
+        showUserContextMenu(event, user) {
+            this.userContextMenuVisible = true
+            this.userContextMenuStyle = {
+                top: `${event.clientY}px`,
+                left: `${event.clientX}px`
+            }
+            this.selectedUser = user
+            event.stopPropagation()
+        },
+
+        // 隐藏用户右键菜单
+        hideUserContextMenu() {
+            this.userContextMenuVisible = false
+        },
+
+        // 发起私聊
+        async startChat(user) {
+            try {
+                // 发送初始化私聊请求
+                const response = await axios.post('/chat/private/send', {
+                    receiver_id: user.user_id
+                })
+
+                if (response.data.code === 20000) {
+                    // 请求成功后跳转到消息页面
+                    this.$router.push({
+                        name: 'Messages',
+                        params: { 
+                            userId: user.user_id,
+                            username: user.username,
+                            addToList: true,
+                            autoSelect: true  // 添加自动选择标记
+                        }
+                    })
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                this.$message.error('初始化私聊失败：' + error.message)
+            }
+            this.hideUserContextMenu()
         }
     }
 }
 </script>
 
 <style scoped>
-/* 从原 Department.vue 复制部门管理相关样式 */
+.contacts {
+    height: 100%;
+    background-color: #f5f7fa;
+    padding: 20px;
+}
+
+.department-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 0 10px;
+}
+
+.department-header h2 {
+    font-size: 20px;
+    color: #333;
+    margin: 0;
+}
+
+.department-tree {
+    background: #fff;
+    border-radius: 4px;
+    padding: 15px;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+    border: 1px solid #ebeef5;
+}
+
+.department-item {
+    margin-bottom: 2px;
+    position: relative;
+}
+
+.department-node {
+    padding: 8px;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+    display: flex;
+    align-items: center;
+}
+
+.department-node:hover {
+    background-color: #f5f7fa;
+}
+
+.department-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.expand-btn {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    width: 100%;
+}
+
+.el-icon-arrow-right {
+    transition: transform 0.3s;
+    margin-right: 8px;
+    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+.el-icon-arrow-right.expanded {
+    transform: rotate(90deg);
+}
+
+.dept-title {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.el-icon-folder {
+    color: #409EFF;
+    margin-right: 8px;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.department-name {
+    font-size: 14px;
+    color: #333;
+    margin-right: 8px;
+    flex: 1;
+}
+
+.user-list-container {
+    margin-left: 24px;
+    margin-top: 8px;
+}
+
+.user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+.user-item:hover {
+    background-color: #f5f7fa;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    background-color: #e6f1fc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-avatar i {
+    color: #409EFF;
+}
+
+.user-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.username {
+    font-size: 14px;
+    color: #333;
+}
+
+.identity {
+    font-size: 12px;
+    color: #909399;
+}
+
+.user-contact {
+    margin-left: 24px;
+}
+
+.phone {
+    font-size: 13px;
+    color: #606266;
+}
+
+.user-actions {
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.user-item:hover .user-actions {
+    opacity: 1;
+}
+
+.context-menu {
+    position: fixed;
+    background: white;
+    border-radius: 4px;
+    padding: 5px 0;
+    min-width: 150px;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+    z-index: 3000;
+}
+
+.context-menu-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.context-menu-item:hover {
+    background-color: #f5f7fa;
+}
+
+.context-menu-item i {
+    font-size: 16px;
+    color: #909399;
+}
+
+.children {
+    margin-left: 28px;
+    border-left: 1px solid #ebeef5;
+    padding-left: 16px;
+}
+
+.department-item::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 18px;
+    width: 16px;
+    height: 1px;
+    background-color: #ebeef5;
+}
+
+.password-input {
+    margin-bottom: 10px;
+}
+
+.el-checkbox {
+    color: #606266;
+}
 </style>

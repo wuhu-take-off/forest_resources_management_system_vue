@@ -13,7 +13,7 @@
                 <div v-for="friend in filteredFriends" :key="friend.user_id"
                     :class="['friend-item', { 'active': currentFriend && currentFriend.user_id === friend.user_id }]"
                     @click="selectFriend(friend)">
-                    <div class="friend-avatar">
+                    <div class="friend-avatar" :style="{ backgroundColor: friend.avatarColor }">
                         {{ friend.avatar }}
                     </div>
                     <div class="friend-info">
@@ -26,7 +26,8 @@
         <!-- 右侧聊天窗口 -->
         <div class="chat-window" v-if="currentFriend">
             <div class="chat-header">
-                <h3>{{ currentFriend.username }}</h3>
+                <h3>{{ currentFriend.name }}</h3>
+                <span class="chat-type">{{ currentFriend.type === 'group' ? '群聊' : '私聊' }}</span>
             </div>
             <div class="chat-messages" ref="chatMessages">
                 <div v-for="(message, index) in chatMessages" :key="index"
@@ -126,7 +127,31 @@ export default {
         WebSocketService.connect()
         // 添加消息处理器
         WebSocketService.addMessageHandler(this.handleWebSocketMessage)
-        this.fetchFriendsList() // 获取好友列表
+        
+        // 先获取好友列表
+        this.fetchFriendsList().then(() => {
+            // 获取好友列表成功后，检查是否需要自动选择用户
+            const { userId, username, addToList, autoSelect } = this.$route.params
+            if (userId) {
+                // 如果有指定用户，直接打开与该用户的聊天
+                const newFriend = {
+                    user_id: userId,
+                    username: username,
+                    avatar: username.charAt(0).toUpperCase()
+                }
+                
+                // 如果需要添加到聊天列表且列表中不存在该用户
+                if (addToList && !this.friends.some(friend => friend.user_id === userId)) {
+                    this.friends.push(newFriend)
+                }
+                
+                // 如果需要自动选择，则选择该用户
+                if (autoSelect) {
+                    this.currentFriend = newFriend
+                    this.loadChatHistory()
+                }
+            }
+        })
     },
     beforeDestroy() {
         // 只移除消息处理器，不断开连接
@@ -165,10 +190,12 @@ export default {
                     return
                 }
 
-                const response = await this.$axios.post('/chat/private/send', {
-                    receiver_id: this.currentFriend.user_id, // 使用当前选中的好友ID
-                    message: this.messageInput.trim()
-                }, {
+                const url = this.currentFriend.type === 'group' ? '/chat/send' : '/chat/private/send'
+                const data = this.currentFriend.type === 'group' 
+                    ? { group_id: this.currentFriend.id, message: this.messageInput.trim() }
+                    : { receiver_id: this.currentFriend.id, message: this.messageInput.trim() }
+
+                const response = await this.$axios.post(url, data, {
                     headers: {
                         'Authorization': token
                     }
@@ -225,22 +252,38 @@ export default {
         async fetchFriendsList() {
             try {
                 const response = await this.$axios.post('/user/chat/list')
-                console.log('获取好友列表响应:', response)
+                console.log('获取聊天列表响应:', response)
 
                 if (response.data.code === 20000) {
-                    // 处理好友列表数据，添加头像信息
-                    this.friends = response.data.data.chat_list.map(friend => ({
-                        user_id: friend.user_id,
-                        username: friend.user_name,
-                        avatar: friend.user_name.charAt(0).toUpperCase() // 获取用户名首字母作为头像
-                    }))
-                    console.log('处理后的好友列表:', this.friends)
+                    // 处理聊天列表数据，包括用户和群组
+                    this.friends = response.data.data.chat_list.map(item => {
+                        if (item.user_id) {
+                            // 处理用户
+                            return {
+                                id: item.user_id,
+                                name: item.user_name,
+                                avatar: item.user_name.charAt(0).toUpperCase(),
+                                type: 'user',
+                                avatarColor: '#1890ff' // 用户头像颜色
+                            }
+                        } else {
+                            // 处理群组
+                            return {
+                                id: item.group_id,
+                                name: item.group_name,
+                                avatar: item.group_name.charAt(0).toUpperCase(),
+                                type: 'group',
+                                avatarColor: '#52c41a' // 群组头像颜色
+                            }
+                        }
+                    })
+                    console.log('处理后的聊天列表:', this.friends)
                 } else {
-                    throw new Error(response.data.msg || '获取好友列表失败')
+                    throw new Error(response.data.msg || '获取聊天列表失败')
                 }
             } catch (error) {
-                console.error('获取好友列表失败:', error)
-                this.$message.error(error.message || '获取好友列表失败')
+                console.error('获取聊天列表失败:', error)
+                this.$message.error(error.message || '获取聊天列表失败')
             }
         },
 
@@ -252,18 +295,29 @@ export default {
 
         async loadChatHistory() {
             try {
-                const response = await this.$axios.post('/chat/private/history', {
-                    user_id: this.currentFriend.user_id
-                })
+                let response;
+                if (this.currentFriend.type === 'group') {
+                    // 获取群聊历史
+                    response = await this.$axios.post('/chat/history', {
+                        group_id: this.currentFriend.id
+                    })
+                } else {
+                    // 获取私聊历史
+                    response = await this.$axios.post('/chat/private/history', {
+                        user_id: this.currentFriend.id
+                    })
+                }
 
                 if (response.data.code === 20000) {
                     const userId = parseInt(localStorage.getItem('userid'))
-                    this.chatMessages = response.data.data.list.map(msg => ({
-                        content: msg.msg,
-                        type: msg.send_id === userId ? 'sent' : 'received',
-                        contentType: msg.type === 1 ? 'text' : 'file', // 根据消息类型判断
-                        send_time: msg.send_time
-                    }))
+                    this.chatMessages = response.data.data.list
+                        .filter(msg => msg.type !== 3)
+                        .map(msg => ({
+                            content: msg.msg,
+                            type: msg.send_id === userId ? 'sent' : 'received',
+                            contentType: msg.type === 1 ? 'text' : 'file',
+                            send_time: msg.send_time
+                        }))
                     this.$nextTick(() => {
                         this.scrollToBottom()
                     })
@@ -427,7 +481,6 @@ export default {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background-color: #1890ff;
     color: white;
     display: flex;
     align-items: center;
@@ -705,5 +758,15 @@ export default {
 :deep(.image-preview-dialog .el-message-box__close) {
     font-size: 20px;
     color: #909399;
+}
+
+/* 添加聊天类型标签样式 */
+.chat-type {
+    font-size: 12px;
+    color: #909399;
+    margin-left: 8px;
+    padding: 2px 6px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
 }
 </style>
