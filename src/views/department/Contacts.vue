@@ -117,6 +117,12 @@
             <div class="context-menu-item" @click="showAddDialog(selectedDepartment.department_id)">
                 <i class="el-icon-plus"></i> 添加子部门
             </div>
+            <div class="context-menu-item" @click="startDepartmentChat(selectedDepartment)">
+                <i class="el-icon-chat-line-round"></i> 发起部门聊天
+            </div>
+            <div class="context-menu-item" @click="showSendAnnouncement(selectedDepartment)">
+                <i class="el-icon-bell"></i> 发送部门公告
+            </div>
         </div>
 
         <!-- 添加/编辑部门对话框 -->
@@ -128,7 +134,7 @@
                 <el-form-item label="部门名称">
                     <el-input 
                         v-model="departmentForm.department_name" 
-                        placeholder="请��入部门名称">
+                        placeholder="请入部门名称">
                     </el-input>
                 </el-form-item>
             </el-form>
@@ -189,6 +195,33 @@
                 <i class="el-icon-chat-line-round"></i> 发起私聊
             </div>
         </div>
+
+        <!-- 发送公告对话框 -->
+        <el-dialog 
+            title="发送部门公告" 
+            :visible.sync="showAnnouncementDialog" 
+            width="500px">
+            <el-form :model="announcementForm" label-width="80px">
+                <el-form-item label="公告标题">
+                    <el-input 
+                        v-model="announcementForm.title" 
+                        placeholder="请输入公告标题">
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="公告内容">
+                    <el-input 
+                        v-model="announcementForm.content" 
+                        type="textarea"
+                        :rows="4"
+                        placeholder="请输入公告内容">
+                    </el-input>
+                </el-form-item>
+            </el-form>
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="showAnnouncementDialog = false">取 消</el-button>
+                <el-button type="primary" @click="handleSubmitAnnouncement">发 送</el-button>
+            </span>
+        </el-dialog>
     </div>
 </template>
 
@@ -234,11 +267,20 @@ export default {
                 left: '0px'
             },
             selectedUser: null,
+            currentUserDeptId: null,
+            affiliatedDepartments: [],
+            showAnnouncementDialog: false,
+            announcementForm: {
+                department_id: null,
+                content: '',
+                title: ''
+            }
         }
     },
     created() {
         this.fetchDepartmentList()
         this.fetchIdentityList()
+        this.getCurrentUserDept()
         // 添加点击其他地方关闭右键菜单的监听
         document.addEventListener('click', () => {
             this.hideContextMenu()
@@ -576,6 +618,98 @@ export default {
                 this.$message.error('初始化私聊失败：' + error.message)
             }
             this.hideUserContextMenu()
+        },
+
+        // 获取当前用户部门信息
+        async getCurrentUserDept() {
+            try {
+                const response = await this.$axios.post('/user/single/user/info')
+                if (response.data.code === 20000) {
+                    this.currentUserDeptId = response.data.data.department_id
+                    this.affiliatedDepartments = response.data.data.affiliated_department || []
+                }
+            } catch (error) {
+                console.error('获取用户部门信息失败:', error)
+            }
+        },
+
+        // 检查是否可以与该部门聊天
+        canChatWithDepartment(deptId) {
+            return this.affiliatedDepartments.includes(deptId)
+        },
+
+        // 发起部门聊天
+        async startDepartmentChat(department) {
+            if (!this.canChatWithDepartment(department.department_id)) {
+                this.$message.warning('只能与自己所在部门或关联部门进行聊天')
+                return
+            }
+
+            try {
+                // 发送初始化群聊请求
+                const response = await this.$axios.post('/chat/group/send', {
+                    receiver_id: department.department_id,
+                })
+
+                if (response.data.code === 20000) {
+                    // 请求成功后跳转到消息页面
+                    this.$router.push({
+                        name: 'Messages',
+                        params: { 
+                            groupId: department.department_id,
+                            groupName: department.department_name,
+                            addToList: true,
+                            autoSelect: true
+                        }
+                    })
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                this.$message.error('初始化部门聊天失败：' + error.message)
+            }
+            this.hideContextMenu()
+        },
+
+        // 显示发送公告对话框
+        showSendAnnouncement(department) {
+            if (!this.canChatWithDepartment(department.department_id)) {
+                this.$message.warning('只能向自己所在部门或关联部门发送公告')
+                return
+            }
+            
+            this.announcementForm = {
+                department_id: department.department_id,
+                content: '',
+                title: ''
+            }
+            this.showAnnouncementDialog = true
+            this.hideContextMenu()
+        },
+
+        // 发送部门公告
+        async handleSubmitAnnouncement() {
+            if (!this.announcementForm.title.trim() || !this.announcementForm.content.trim()) {
+                this.$message.warning('公告标题和内容不能为空')
+                return
+            }
+
+            try {
+                const response = await this.$axios.post('/announcement/send', {
+                    department_id: this.announcementForm.department_id,
+                    title: this.announcementForm.title.trim(),
+                    content: this.announcementForm.content.trim()
+                })
+
+                if (response.data.code === 20000) {
+                    this.$message.success('公告发送成功')
+                    this.showAnnouncementDialog = false
+                } else {
+                    throw new Error(response.data.msg || '发送失败')
+                }
+            } catch (error) {
+                this.$message.error('发送公告失败：' + error.message)
+            }
         }
     }
 }
@@ -796,5 +930,17 @@ export default {
 
 .el-checkbox {
     color: #606266;
+}
+
+.el-dialog__body {
+    padding: 20px;
+}
+
+.el-form-item {
+    margin-bottom: 20px;
+}
+
+.el-textarea__inner {
+    font-family: inherit;
 }
 </style>
