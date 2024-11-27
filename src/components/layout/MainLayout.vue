@@ -19,78 +19,19 @@
             <div class="sidebar">
                 <el-menu :default-active="activeMenu" :default-openeds="defaultOpeneds" class="menu" router
                     background-color="#001529" text-color="#fff" active-text-color="#1890ff" :unique-opened="false">
-                    <el-submenu index="department" popper-class="submenu-popper">
-                        <template slot="title">
-                            <i class="el-icon-office-building menu-icon"></i>
-                            <span class="menu-title">部门管理</span>
-                        </template>
-                        <el-menu-item index="/main/department/messages">
-                            <i class="el-icon-chat-line-round submenu-icon"></i>
-                            <span class="submenu-title">消息</span>
-                        </el-menu-item>
-                        <el-menu-item index="/main/department/contacts">
-                            <i class="el-icon-notebook-2 submenu-icon"></i>
-                            <span class="submenu-title">通讯录</span>
-                        </el-menu-item>
-                    </el-submenu>
-
-                    <el-submenu index="forest" popper-class="submenu-popper">
-                        <template slot="title">
-                            <i class="el-icon-tree menu-icon"></i>
-                            <span class="menu-title">林地资源</span>
-                        </template>
-                        <el-menu-item index="/main/forest/view">
-                            <i class="el-icon-view submenu-icon"></i>
-                            <span class="submenu-title">资源查看</span>
-                        </el-menu-item>
-                        <el-menu-item index="/main/forest/report">
-                            <i class="el-icon-document submenu-icon"></i>
-                            <span class="submenu-title">资源汇报</span>
-                        </el-menu-item>
-                    </el-submenu>
-
-                    <el-submenu index="announcement" popper-class="submenu-popper">
-                        <template slot="title">
-                            <i class="el-icon-bell menu-icon"></i>
-                            <span class="menu-title">公告管理</span>
-                        </template>
-                        <el-menu-item index="/main/announcement/policy-info">
-                            <i class="el-icon-document submenu-icon"></i>
-                            <span class="submenu-title">政策信息</span>
-                        </el-menu-item>
-                        <el-menu-item index="/main/announcement/notice-info">
-                            <i class="el-icon-message submenu-icon"></i>
-                            <span class="submenu-title">公告信息</span>
-                        </el-menu-item>
-                        <el-menu-item index="/main/announcement/policy-manage">
-                            <i class="el-icon-edit-outline submenu-icon"></i>
-                            <span class="submenu-title">政策管理</span>
-                        </el-menu-item>
-                        <el-menu-item index="/main/announcement/notice-manage">
-                            <i class="el-icon-setting submenu-icon"></i>
-                            <span class="submenu-title">公告管理</span>
-                        </el-menu-item>
-                    </el-submenu>
-
-                    <el-menu-item index="/main/tasks" class="menu-item">
-                        <i class="el-icon-s-order menu-icon"></i>
-                        <span class="menu-title">任务管理</span>
-                    </el-menu-item>
-
-                    <el-submenu index="people" popper-class="submenu-popper">
-                        <template slot="title">
-                            <i class="el-icon-user menu-icon"></i>
-                            <span class="menu-title">民众</span>
-                        </template>
-                        <el-menu-item index="/main/people/application">
-                            <i class="el-icon-edit submenu-icon"></i>
-                            <span class="submenu-title">民众申请</span>
-                        </el-menu-item>
-                        <el-menu-item index="/main/people/application-manage">
-                            <i class="el-icon-s-tools submenu-icon"></i>
-                            <span class="submenu-title">申请管理</span>
-                        </el-menu-item>
-                    </el-submenu>
+                    <template v-for="module in moduleList">
+                        <el-submenu :index="module.module_name" :key="module.module_id" popper-class="submenu-popper">
+                            <template slot="title">
+                                <i :class="getModuleIcon(module.module_name)"></i>
+                                <span class="menu-title">{{ module.module_desc }}</span>
+                            </template>
+                            <el-menu-item v-for="subModule in module.module_child" :key="subModule.module_id"
+                                :index="getSubModulePath(module.module_name, subModule.module_name)">
+                                <i :class="getSubModuleIcon(module.module_name, subModule.module_name)"></i>
+                                <span class="submenu-title">{{ subModule.module_desc }}</span>
+                            </el-menu-item>
+                        </el-submenu>
+                    </template>
                 </el-menu>
             </div>
             <div class="content">
@@ -116,6 +57,78 @@ import config from '@/config'
 import WebSocketService from '@/services/websocket'
 import { MessageBox, Message } from 'element-ui'
 
+// 添加模块映射配置
+const MODULE_MAPPING = {
+    // 部门管理
+    'department': {
+        path: '/main/department',
+        icon: 'el-icon-office-building',
+        children: {
+            'messages': {
+                path: '/main/department/messages',
+                icon: 'el-icon-chat-line-round'
+            },
+            'contacts': {
+                path: '/main/department/contacts',
+                icon: 'el-icon-notebook-2'
+            }
+        }
+    },
+    // 林地资源
+    'forest': {
+        path: '/main/forest',
+        icon: 'el-icon-tree',
+        children: {
+            'forest_view': {
+                path: '/main/forest/view',
+                icon: 'el-icon-view'
+            },
+            'forest_report': {
+                path: '/main/forest/report',
+                icon: 'el-icon-document'
+            }
+        }
+    },
+    // 公告管理
+    'announcement': {
+        path: '/main/announcement',
+        icon: 'el-icon-bell',
+        children: {
+            'policy_info': {
+                path: '/main/announcement/policy-info',
+                icon: 'el-icon-document'
+            },
+            'notice_info': {
+                path: '/main/announcement/notice-info',
+                icon: 'el-icon-message'
+            },
+            'policy_manage': {
+                path: '/main/announcement/policy-manage',
+                icon: 'el-icon-edit-outline'
+            },
+            'notice_manage': {
+                path: '/main/announcement/notice-manage',
+                icon: 'el-icon-setting'
+            }
+        }
+    },
+    // 民众
+    'people': {
+        path: '/main/people',
+        icon: 'el-icon-user',
+        children: {
+            'application': {
+                path: '/main/people/application',
+                icon: 'el-icon-edit'
+            },
+            'application_manage': {
+                path: '/main/people/application-manage',
+                icon: 'el-icon-s-tools'
+            }
+        }
+    }
+}
+
 export default {
     name: 'MainLayout',
     data() {
@@ -123,7 +136,8 @@ export default {
             userName: '',
             activeMenu: '',
             breadcrumbList: [],
-            defaultOpeneds: []
+            defaultOpeneds: [],
+            moduleList: [], // 存储用户可访问的模块列表
         }
     },
     methods: {
@@ -175,28 +189,54 @@ export default {
         },
         updateDefaultOpeneds() {
             const path = this.$route.path
-            this.defaultOpeneds = []
+            this.defaultOpeneds = this.moduleList
+                .filter(module => path.includes(`/main/${module.module_name}/`))
+                .map(module => module.module_name)
+        },
+        // 获取用户可访问的模块列表
+        async fetchModuleList() {
+            try {
+                const response = await this.$axios.post('/module/list')
+                if (response.data.code === 20000) {
+                    this.moduleList = response.data.data.module_list
+                    this.updateDefaultOpeneds()
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                console.error('获取模块列表失败:', error)
+                this.$message.error('获取模块列表失败')
+            }
+        },
 
-            if (path.includes('/main/department/')) {
-                this.defaultOpeneds.push('department')
-            }
-            if (path.includes('/main/forest/')) {
-                this.defaultOpeneds.push('forest')
-            }
-            if (path.includes('/main/announcement/')) {
-                this.defaultOpeneds.push('announcement')
-            }
-            if (path.includes('/main/people/')) {
-                this.defaultOpeneds.push('people')
-            }
+        // 获取模块的图标
+        getModuleIcon(moduleName) {
+            return MODULE_MAPPING[moduleName] && MODULE_MAPPING[moduleName].icon || 'el-icon-folder'
+        },
+
+        // 获取子模块的图标
+        getSubModuleIcon(parentModule, moduleName) {
+            return MODULE_MAPPING[parentModule] && 
+                   MODULE_MAPPING[parentModule].children && 
+                   MODULE_MAPPING[parentModule].children[moduleName] && 
+                   MODULE_MAPPING[parentModule].children[moduleName].icon || 'el-icon-document'
+        },
+
+        // 获取子模块的路由路径
+        getSubModulePath(parentModule, moduleName) {
+            return MODULE_MAPPING[parentModule] && 
+                   MODULE_MAPPING[parentModule].children && 
+                   MODULE_MAPPING[parentModule].children[moduleName] && 
+                   MODULE_MAPPING[parentModule].children[moduleName].path || ''
         }
     },
     created() {
         this.activeMenu = this.$route.path
-        this.updateDefaultOpeneds()
         // 从本地存储获取用户名
         const username = localStorage.getItem('username')
         this.userName = username || '未知用户'
+        // 获取用户可访问的模块列表
+        this.fetchModuleList()
     },
     watch: {
         $route: {

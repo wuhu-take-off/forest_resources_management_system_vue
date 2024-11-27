@@ -99,18 +99,52 @@ export default {
         },
 
         // 游客登录方法
-        handleGuestLogin() {
-            // 存储游客身份
-            localStorage.setItem('userType', 'guest')
-            localStorage.setItem('username', '游客')
-            // 游客不需要token
-            localStorage.removeItem('token')
-            delete axios.defaults.headers.common['Authorization']
-            // 断开 WebSocket 连接
-            WebSocketService.disconnect()
-            // 跳转到主页
-            this.$router.push('/main')
-            this.$message.success('游客登录成功')
+        async handleGuestLogin() {
+            this.loading = true
+            try {
+                // 使用默认的游客账号登录
+                const response = await axios({
+                    method: 'post',
+                    url: '/user/login',
+                    data: {
+                        username: 'mass',
+                        password: '123'
+                    },
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+
+                const { code, msg, data } = response.data
+
+                if (code !== config.successCode) {
+                    throw new Error(msg || '游客登录失败')
+                }
+
+                if (data && data.token) {
+                    // 存储token、用户类型、userid和用户名
+                    localStorage.setItem('token', data.token)
+                    localStorage.setItem('userType', 'guest')  // 标记为游客身份
+                    localStorage.setItem('userid', data.userid.toString())
+                    localStorage.setItem('username', '游客')   // 显示名称设为"游客"
+
+                    // 设置axios默认请求头
+                    axios.defaults.headers.common['Authorization'] = data.token
+
+                    // 连接 WebSocket
+                    WebSocketService.connect()
+
+                    // 登录成功后跳转到主页
+                    this.$router.push('/main')
+                    this.$message.success('游客登录成功')
+                } else {
+                    throw new Error('游客登录失败：未获取到token')
+                }
+            } catch (error) {
+                this.$message.error(error.message || '游客登录失败，请重试')
+            } finally {
+                this.loading = false
+            }
         }
     },
     created() {
