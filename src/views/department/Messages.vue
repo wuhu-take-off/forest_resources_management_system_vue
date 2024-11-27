@@ -27,8 +27,36 @@
         <!-- 右侧聊天窗 -->
         <div class="chat-window" v-if="currentFriend">
             <div class="chat-header">
-                <h3>{{ currentFriend.name }}</h3>
-                <span class="chat-type">{{ currentFriend.type === 'group' ? '群聊' : '私聊' }}</span>
+                <div class="header-left">
+                    <h3>{{ currentFriend.name }}</h3>
+                    <span class="chat-type">{{ currentFriend.type === 'group' ? '群聊' : '私聊' }}</span>
+                </div>
+                <div class="header-right" v-if="currentFriend && currentFriend.type === 'group'">
+                    <el-button 
+                        type="text" 
+                        @click="showAnnouncements = !showAnnouncements"
+                        :class="{ 'active': showAnnouncements }">
+                        <i class="el-icon-bell"></i> 公告
+                    </el-button>
+                </div>
+            </div>
+            <div class="announcements-panel" v-if="showAnnouncements && currentFriend && currentFriend.type === 'group'">
+                <div class="announcements-list">
+                    <div v-for="announcement in departmentAnnouncements" 
+                        :key="announcement.department_affiche_id" 
+                        class="announcement-item">
+                        <div class="announcement-header">
+                            <h4>{{ announcement.department_affiche_title }}</h4>
+                            <span class="announcement-time">{{ announcement.create_time }}</span>
+                        </div>
+                        <div class="announcement-content">
+                            {{ announcement.department_affiche_content }}
+                        </div>
+                    </div>
+                    <div v-if="departmentAnnouncements.length === 0" class="no-announcements">
+                        暂无公告
+                    </div>
+                </div>
             </div>
             <div class="chat-messages" ref="chatMessages">
                 <div v-for="(message, index) in chatMessages" :key="index"
@@ -112,6 +140,8 @@ export default {
             searchText: '',
             friends: [], // 好友列表
             currentFriend: null, // 当前选中的好友
+            departmentAnnouncements: [], // 存储部门公告列表
+            showAnnouncements: false, // 控制公告显示状态
         }
     },
     computed: {
@@ -184,25 +214,55 @@ export default {
         WebSocketService.removeMessageHandler(this.handleWebSocketMessage)
     },
     methods: {
-        // 从原 Department.vue 复制聊天相关方法
         handleWebSocketMessage(event) {
             try {
                 const data = JSON.parse(event.data)
                 const userId = parseInt(localStorage.getItem('userid'))
 
+                // 检查当前是否有选中的聊天对象
+                if (!this.currentFriend) {
+                    return
+                }
+
+                // 检查消息是否属于当前聊天
+                let isCurrentChat = false;
+
+                if (this.currentFriend.type === 'group') {
+                    // 群聊：检查部门ID是否匹配
+                    isCurrentChat = data.department_id === this.currentFriend.id
+                } else {
+                    // 私聊：检查是否是当前聊天的用户
+                    if (data.send_id === userId) {
+                        // 自己发送的消息，检查接收者是否是当前聊天对象
+                        isCurrentChat = data.receiver_id === this.currentFriend.id
+                    } else {
+                        // 收到的消息，检查发送者是否是当前聊天对象
+                        isCurrentChat = data.send_id === this.currentFriend.id && data.receiver_id === userId
+                    }
+                }
+
+                // 如果不是当前聊天的消息，则不处理
+                if (!isCurrentChat) {
+                    return
+                }
+
+                // 创建消息内容对象
                 let messageContent = {
                     content: data.msg,
                     type: data.send_id === userId ? 'sent' : 'received',
-                    contentType: data.type === 1 ? 'text' : 'file', // 根据 type 判断消息类型
+                    contentType: data.type === 1 ? 'text' : 'file',
                     send_time: data.send_time
                 }
 
+                // 将消息添加到聊天记录中
                 this.chatMessages.push(messageContent)
+                
+                // 滚动到底部
                 this.$nextTick(() => {
                     this.scrollToBottom()
                 })
             } catch (error) {
-                console.error('Error parsing WebSocket message:', error)
+                console.error('Error handling WebSocket message:', error)
             }
         },
 
@@ -216,16 +276,14 @@ export default {
                     return
                 }
 
+                // 根据聊天类型选择不同的接口
                 const url = this.currentFriend.type === 'group' ? '/chat/group/send' : '/chat/private/send'
-                const data = this.currentFriend.type === 'group' 
-                    ? { receiver_id: this.currentFriend.id, message: this.messageInput.trim() }
-                    : { receiver_id: this.currentFriend.id, message: this.messageInput.trim() }
+                const data = {
+                    receiver_id: this.currentFriend.id,
+                    message: this.messageInput.trim()
+                }
 
-                const response = await this.$axios.post(url, data, {
-                    headers: {
-                        'Authorization': token
-                    }
-                })
+                const response = await this.$axios.post(url, data)
 
                 if (response.data.code === 40100) {
                     window.location.href = 'http://localhost:8080'
@@ -310,7 +368,7 @@ export default {
                     throw new Error(response.data.msg || '获取聊天列表失败')
                 }
             } catch (error) {
-                console.error('获取聊天列表失败:', error)
+                console.error('获取天列表失败:', error)
                 this.$message.error(error.message || '获取聊天列表失败')
             }
         },
@@ -318,6 +376,15 @@ export default {
         async selectFriend(friend) {
             this.currentFriend = friend
             this.chatMessages = [] // 清空之前的聊天记录
+            this.showAnnouncements = false // 重置公告显示状态
+            
+            // 如果是群聊，获取部门公告
+            if (friend.type === 'group') {
+                await this.fetchDepartmentAnnouncements(friend.id)
+            } else {
+                this.departmentAnnouncements = [] // 清空公告列表
+            }
+            
             await this.loadChatHistory() // 加载聊天记录
         },
 
@@ -339,13 +406,14 @@ export default {
                 if (response.data.code === 20000) {
                     const userId = parseInt(localStorage.getItem('userid'))
                     this.chatMessages = response.data.data.chat_history_list
-                        .filter(msg => msg.type !== 3)
+                        .filter(msg => msg.type !== 3) // 过滤掉类型为3的消息
                         .map(msg => ({
                             content: msg.msg,
                             type: msg.send_id === userId ? 'sent' : 'received',
                             contentType: msg.type === 1 ? 'text' : 'file',
                             send_time: msg.send_time
                         }))
+
                     this.$nextTick(() => {
                         this.scrollToBottom()
                     })
@@ -372,7 +440,7 @@ export default {
                 })
             }
 
-            // 其他情况显示完整日期和时间
+            // 其���情况显示完整日期和时间
             return date.toLocaleString('zh-CN', {
                 month: '2-digit',
                 day: '2-digit',
@@ -464,7 +532,30 @@ export default {
                 '#2f54eb'  // 深蓝色
             ];
             return colors[Math.floor(Math.random() * colors.length)];
-        }
+        },
+
+        // 获取部门公告
+        async fetchDepartmentAnnouncements(departmentId) {
+            try {
+                const response = await this.$axios.post('/department_affiche/list', {
+                    department_id: departmentId
+                })
+
+                if (response.data.code === 20000) {
+                    this.departmentAnnouncements = response.data.data.department_affiche_list.map(announcement => ({
+                        ...announcement,
+                        create_time: this.formatTime(announcement.department_affiche_create_time)
+                    }))
+                    // 按时间倒序排序
+                    this.departmentAnnouncements.sort((a, b) => b.department_affiche_create_time - a.department_affiche_create_time)
+                } else {
+                    throw new Error(response.data.msg)
+                }
+            } catch (error) {
+                console.error('获取部门公告失败:', error)
+                this.$message.error('获取部门公告失败')
+            }
+        },
     }
 }
 </script>
@@ -578,6 +669,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 25px;
+    background-color: #f5f7fa;
 }
 
 /* 消息包装器样式 */
@@ -817,5 +909,81 @@ export default {
     padding: 2px 6px;
     background-color: #f5f7fa;
     border-radius: 4px;
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-right .el-button {
+    padding: 0 8px;
+    font-size: 14px;
+}
+
+.header-right .el-button.active {
+    color: #409EFF;
+}
+
+.header-right .el-button i {
+    margin-right: 4px;
+}
+
+.announcements-panel {
+    background-color: #fff;
+    border-bottom: 1px solid #dcdfe6;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.announcements-list {
+    padding: 16px;
+}
+
+.announcement-item {
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.announcement-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.announcement-header h4 {
+    margin: 0;
+    color: #303133;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.announcement-time {
+    font-size: 12px;
+    color: #909399;
+}
+
+.announcement-content {
+    font-size: 13px;
+    color: #606266;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.no-announcements {
+    text-align: center;
+    color: #909399;
+    padding: 20px;
+    font-size: 14px;
 }
 </style>

@@ -539,7 +539,7 @@ export default {
                     this.showUserDialog = false
                     this.changePassword = false // 重置修改密码选项
                     
-                    // 刷新当前部门的用户列表
+                    // 刷新当前部门的用户列��
                     const department = this.findDepartmentById(this.userForm.department_id)
                     if (department) {
                         await this.toggleUserList(department)
@@ -695,7 +695,7 @@ export default {
             }
 
             try {
-                const response = await this.$axios.post('/announcement/send', {
+                const response = await this.$axios.post('/department_affiche/create', {
                     department_id: this.announcementForm.department_id,
                     title: this.announcementForm.title.trim(),
                     content: this.announcementForm.content.trim()
